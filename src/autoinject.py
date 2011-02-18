@@ -136,6 +136,15 @@ for to_be_run, case_name, is_phb, offset, bits in parser:
 
     if to_be_run == '1':
         
+        # clean up the rest
+        case_name = case_name.strip()
+        is_phb = is_phb.strip()
+        offset = offset.strip()
+        bits = bits.strip()
+        address = cfg['hub_base_addr'].strip()
+        
+        print '* Running test case: %s' %case_name
+        
         # connect to tunnel
         # all this crap is required because it's impossible to get a phyp prompt reliably
         i = 1
@@ -146,13 +155,6 @@ for to_be_run, case_name, is_phb, offset, bits in parser:
             if i == 1:
                 phyp.close()
                 time.sleep(1)
-                
-        # clean up the rest
-        case_name = case_name.strip()
-        is_phb = is_phb.strip()
-        offset = offset.strip()
-        bits = bits.strip()
-        address = cfg['hub_base_addr'].strip()
         
         # record the input and output from the phyp session
         fout_phyp = file('./traces/%s' %case_name, 'w')
