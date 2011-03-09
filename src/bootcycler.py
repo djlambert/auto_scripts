@@ -1,6 +1,5 @@
 #!/usr/bin/python
-
-################################################################################
+###############################################################################
 # name: bootcycler.py
 # auth: korsnick
 # date: 1/18/2011
@@ -11,11 +10,14 @@ import time
 import datetime
 #import pdb
 
-################################################################################
+
+###############################################################################
 # FUNCTIONS
+
 def parse_config(filename):
     
-    """ this function reads in the configuration settings for each machine to test """
+    """ this function reads in the configuration
+    settings for each machine to test """
     
     COMMENT_CHAR = '#'
     OPTION_CHAR =  '='
@@ -38,9 +40,11 @@ def parse_config(filename):
     f.close()
     return options
 
+
 def comment (px, str):
     
-    """This pretty prints comments into the logfile. It takes a pexpect object and comment string"""
+    """This pretty prints comments into the logfile.
+    It takes a pexpect object and comment string"""
 
     px.logfile.write('\n')
     px.logfile.write('///////////////////////////////////////////////////////////////////////////////\n')
@@ -48,7 +52,7 @@ def comment (px, str):
     px.logfile.write('///////////////////////////////////////////////////////////////////////////////\n')
     return
     
-################################################################################
+###############################################################################
 
 # read in machine specific settings from the config file
 #cfg = parse_config(sys.argv[1])
@@ -91,7 +95,9 @@ while (True):
         
         # set up tunnel
         print 'Run %s: setting up tunnel...' %run
-        vtty = pexpect.spawn('ssh -l %s %s vtty-fsp %s -timeout=0 -setuponly' %(cfg['user'], cfg['host'], cfg['machine']), timeout=None)
+        vtty = pexpect.spawn('ssh -l %s %s vtty-fsp %s -timeout=0 -setuponly'
+                             %(cfg['user'], cfg['host'], cfg['machine']),
+                             timeout=None)
         fout_vtty = file('vtty.log', 'a')
         vtty.logfile = fout_vtty
         vtty.expect ('password: ')
@@ -101,11 +107,13 @@ while (True):
         vtty.close()
         
         # connect to tunnel
-        # all this crap is required because it's impossible to get a phyp prompt reliably
+        # all this crap is required because it's impossible
+        # to get a phyp prompt reliably
         i = 1
         while i == 1:
             print 'Run %s: connecting to PHYP...' %run
-            phyp = pexpect.spawn('telnet %s 30002' %cfg['machine'], timeout=None)
+            phyp = pexpect.spawn('telnet %s 30002' %cfg['machine'],
+                                 timeout=None)
             fout_phyp = file('phyp.log', 'a')
             phyp.logfile = fout_phyp
             i = phyp.expect(['phyp # ', '0x0'])
@@ -115,7 +123,8 @@ while (True):
         
         # wait for the partition to boot
         print 'Run %s: waiting for partition to boot...' %run
-        ping = pexpect.spawn('ping %s' %cfg['partition'], timeout=None)
+        ping = pexpect.spawn('ping %s' %cfg['partition'],
+                             timeout=None)
         ping.expect('time=')
         ping.close()
         

@@ -7,7 +7,7 @@ import datetime
 print '* Connecting to dumbo...'
 shell = pexpect.spawn('ssh korsnick@dumbo.rchland.ibm.com')
 shell.expect ('password: ')
-shell.sendline('cry4what')
+shell.sendline('c0wboyss')
 shell.expect('2.05b')
 fout_shell = file('chksys.log', 'w')
 shell.logfile = fout_shell

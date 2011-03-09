@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-################################################################################
+###############################################################################
 # name: autoinject.py
 # auth: korsnick
 # date: 12/2010
@@ -12,11 +12,13 @@ import time
 import datetime
 #import pdb
  
-################################################################################
+ 
+###############################################################################
 # FUNCTIONS
 def parse_config(filename):
     
-    """ this function reads in the configuration settings for each machine to test """
+    """ this function reads in the configuration
+    settings for each machine to test """
     
     COMMENT_CHAR = '#'
     OPTION_CHAR =  '='
@@ -38,7 +40,8 @@ def parse_config(filename):
             options[option] = value
     f.close()
     return options
-    
+
+
 def hex_add(hex1, hex2):
 
     """add two hexadecimal string values and return as such"""
@@ -50,15 +53,18 @@ def hex_add(hex1, hex2):
     
     return result
 
+
 def comment(px, str):
     
-    """This pretty prints comments into the logfile. It takes a pexpect object and comment string"""
+    """This pretty prints comments into the logfile.
+    It takes a pexpect object and comment string"""
     
     px.logfile.write('\n')
     px.logfile.write('/////////////////////////////////////////////////////////////////////////////////////////\n')
     px.logfile.write('/ %s\n' %str)
     px.logfile.write('/////////////////////////////////////////////////////////////////////////////////////////\n')
     return
+
 
 def phboffset (baseaddress, phbnumber):
     
@@ -71,9 +77,11 @@ def phboffset (baseaddress, phbnumber):
     if phbnumber == '4':  return hex_add(baseaddress, '0x0C0000')
     if phbnumber == '5':  return hex_add(baseaddress, '0x0D0000')
 
+
 def execute(px, command):
     
-    """ does the main work of getting a prompt and sending the commands """
+    """ Does the main work of getting a prompt and sending the commands.
+    Takes a pexpect object and a command string to send."""
     
     print '  -%s' %command
     if after_inject:
@@ -87,8 +95,12 @@ def execute(px, command):
     while px.before.strip() == 'Could not parse a macro name':
         phyp.sendline(command)
         phyp.expect('phyp # ')
+
+
+def get_srcs(px):
+    px.sendline('errl -l ')
     
-################################################################################
+###############################################################################
    
 #pdb.set_trace()
 
@@ -113,9 +125,21 @@ print '  -lid: %s' %lid['lid']
 print '  -hub: %s' %cfg['hubnumber']
 print '  -phb: %s' %cfg['phbnumber']
 
+# connect to FSP
+print '* Connecting to FSP %s...' %cfg['machine']
+fsp = pexpect.spawn('telnet %s' %cfg['machine'], timeout=None)
+fout_fsp = file('fsp.log', 'w')
+fsp.logfile = fout_fsp
+fsp.expect('login: ')
+fsp.sendline('root')
+fsp.expect('Password: ')
+fsp.sendline('FipSroot')
+fsp.expect(cfg['fsp_prompt'])
+
 # set up phyp tunnel
 print '* Setting up tunnel'
-vtty = pexpect.spawn('ssh -l %s %s vtty-fsp %s -timeout=0 -setuponly' %(cfg['user'], cfg['host'], cfg['machine']))
+vtty = pexpect.spawn('ssh -l %s %s vtty-fsp %s -timeout=0 -setuponly'
+                     %(cfg['user'], cfg['host'], cfg['machine']), timeout=None)
 vtty.expect ('password: ')
 vtty.sendline(cfg['password'])
 fout_vtty = file('.vtty.log', 'w')
@@ -150,7 +174,8 @@ for to_be_run, case_name, is_phb, offset, bits in parser:
         i = 1
         while i == 1:
             print '* Telnetting to PHYP'
-            phyp = pexpect.spawn('telnet %s 30002' %cfg['machine'], timeout=None)
+            phyp = pexpect.spawn('telnet %s 30002' %cfg['machine'],
+                                 timeout=None)
             i = phyp.expect(['phyp # ', '0x0'])
             if i == 1:
                 phyp.close()
@@ -183,18 +208,20 @@ for to_be_run, case_name, is_phb, offset, bits in parser:
         execute(phyp, 'xmquery -q allrio -d 2')
         execute(phyp, 'xmquery -q allslots -d 2')
         execute(phyp, 'xmquery -q allslots -d 1')
+        #get_srcs()
         
         # INJECT
         phyp.logfile.write('\n')
         phyp.logfile.write('/////////////////////////////////////////////////////////////////////////////////////////\n')
         phyp.logfile.write('/////////////////////////////////////////////////////////////////////////////////////////\n')
         execute(phyp,'xmwritememory %s %s' %(address, bits))
-        time.sleep(10)
+        time.sleep(30)
         after_inject = True
         phyp.logfile.write('\n')
         phyp.logfile.write('/////////////////////////////////////////////////////////////////////////////////////////\n')
         phyp.logfile.write('/////////////////////////////////////////////////////////////////////////////////////////\n')
         
+        #get_srcs()
         execute(phyp, 'xmdumptrace -hub %s -ctrl -detail 2' %cfg['hubnumber'])
         execute(phyp, 'xmdumptrace -b %s -detail 2' %cfg['phb_hex'])
         execute(phyp, 'xmdumpbuserrors %s' %cfg['bus_drc'])
