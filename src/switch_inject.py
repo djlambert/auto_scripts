@@ -1,9 +1,9 @@
 #!/usr/bin/python
 
 ###############################################################################
-# name: autoinject.py
+# name: switch_inject.py
 # auth: korsnick
-# date: 12/2010
+# date: 03/2011
 
 import sys
 import pexpect
@@ -22,10 +22,10 @@ def phyp_cmd(px, command):
     Takes a pexpect object and a command string to send."""
     
     print '  -%s' %command
-    if after_inject:
-        log_comment(px, 'POST-INJECT / %s' %command)
-    else:
-        log_comment(px, 'PRE-INJECT / %s' %command)
+    #if after_inject:
+    #    log_comment(px, 'POST-INJECT / %s' %command)
+    #else:
+    #    log_comment(px, 'PRE-INJECT / %s' %command)
     px.sendline(command)
      
     # getting this prompt can be flaky for some reason so loop unit we get it
@@ -44,29 +44,29 @@ def get_srcs(px):
 
 # read in machine specific settings from the config file
 print '\n* Reading config file'
-cfg = parse_config(sys.argv[1])
+#cfg = parse_config(sys.argv[1])
 #cfg = parse_config('/home/ppk/ibm/falcon/bfsp067/bfsp067.cfg')
 #cfg = parse_config('/home/ppk/IBM/jupiter/jioc09a/jioc09a.cfg')j
-#cfg = parse_config('/home/ppk/ibm/falcon/pfd3nb24/pfd3nb24.cfg')
+cfg = parse_config('/home/ppk/ibm/testing/falcon/pfd3nb17/pfd3nb17.cfg')
 
 # check LID version
-print '* Checking LID version'
-lid = parse_config('lid.log')
+#print '* Checking LID version'
+#lid = parse_config('lid.log')
 
 # has the inject happened yet
-after_inject = False
+#after_inject = False
 
 # show config settings to user
 print '* Current Settings:'
 print '  -machine: %s' %cfg['machine']
-print '  -lid: %s' %lid['lid']
-print '  -hub: %s' %cfg['hubnumber']
-print '  -phb: %s' %cfg['phbnumber']
+#print '  -lid: %s' %lid['lid']
+#print '  -hub: %s' %cfg['hubnumber']
+#print '  -phb: %s' %cfg['phbnumber']
 
 # connect to FSP
-print '* Connecting to FSP %s...' %cfg['machine']
+print '* Connecting to FSP %s' %cfg['machine']
 fsp = pexpect.spawn('telnet %s' %cfg['machine'], timeout=None)
-fout_fsp = file('fsp.log', 'w')
+fout_fsp = file('./logs/fsp.log', 'w')
 fsp.logfile = fout_fsp
 fsp.expect('login: ')
 fsp.sendline('root')
@@ -75,23 +75,36 @@ fsp.sendline('FipSroot')
 fsp.expect(cfg['fsp_prompt'])
 
 # set up PHYP tunnel
-print '* Setting up tunnel'
+print '* Setting up PHYP tunnel'
 vtty = pexpect.spawn('ssh -l %s %s vtty-fsp %s -timeout=0 -setuponly'
-                     %(cfg['user'], cfg['host'], cfg['machine']), timeout=None)
+                     %(cfg['user'], cfg['aix'], cfg['machine']), timeout=None)
 vtty.expect ('password: ')
 vtty.sendline(cfg['password'])
-fout_vtty = file('.vtty.log', 'w')
+fout_vtty = file('./logs/vtty.log', 'w')
 vtty.logfile = fout_vtty
 vtty.expect(pexpect.EOF)
 vtty.close()
 
+# connect to an AIX machine (like dumbo)
+print '* Connecting to %s' %cfg['aix']
+aixbox = pexpect.spawn('telnet %s' %cfg['aix'], timeout=None)
+fout_aixbox = file('./logs/aix.log', 'w')
+aixbox.logfile = fout_aixbox
+aixbox.expect('login: ')
+aixbox.sendline(cfg['user'])
+aixbox.expect('Password: ')
+aixbox.sendline(cfg['password'])
+aixbox.expect(cfg['aix_prompt'])
+
+
 # setup CSV file parser to read in each test case from listing file
-inputFile = open(sys.argv[2], 'rb')
+#inputFile = open(sys.argv[2], 'rb')
+inputFile = open('/home/ppk/ibm/testing/falcon/pfd3nb17/switch/switchcases.csv', 'rb')
 parser = csv.reader(inputFile)
 
 # loop through each testcase in the listing file
 # opening the connection needs to be inside the loop in case the CEC is rebooted (ala GXE's)
-for to_be_run, case_name, is_phb, offset, bits in parser:
+for to_be_run, case_name, threshold, cmd in parser:
 
     # remove any whitespace
     to_be_run = to_be_run.strip()
@@ -100,10 +113,8 @@ for to_be_run, case_name, is_phb, offset, bits in parser:
         
         # clean up the rest
         case_name = case_name.strip()
-        is_phb = is_phb.strip()
-        offset = offset.strip()
-        bits = bits.strip()
-        address = cfg['hub_base_addr'].strip()
+        threshold = threshold.strip()
+        cmd = cmd.strip()
         
         print '* Running test case: %s' %case_name
         
@@ -111,9 +122,8 @@ for to_be_run, case_name, is_phb, offset, bits in parser:
         # all this crap is required because it's impossible to get a phyp prompt reliably
         i = 1
         while i == 1:
-            print '* Telnetting to PHYP'
-            phyp = pexpect.spawn('telnet %s 30002' %cfg['machine'],
-                                 timeout=None)
+            print '* Connecting to PHYP'
+            phyp = pexpect.spawn('telnet %s 30002' %cfg['machine'], timeout=None)
             i = phyp.expect(['phyp # ', '0x0'])
             if i == 1:
                 phyp.close()
@@ -123,56 +133,45 @@ for to_be_run, case_name, is_phb, offset, bits in parser:
         fout_phyp = file('./traces/%s' %case_name, 'w')
         phyp.logfile = fout_phyp
         
-        # setup address and offsets 
-        if is_phb == 'yes': address = phb_offset(address, cfg['phbnumber'])
-        address = (hex_add(address, offset)[2:]).zfill(16)
+        # clear the SRCs before each test
+        print '* Clearing SRCs'
+        clear_srcs(fsp)
         
-        # BEGIN
+        # --- BEGIN ---
         phyp.logfile.write('/////////////////////////////////////////////////////////////////////////////////////////\n')
         phyp.logfile.write('/ TESTCASE: %s\n' %case_name)
         phyp.logfile.write('/ MACHINE: %s\n' %cfg['machine'])
-        phyp.logfile.write('/ LID: %s\n' %lid['lid'])
+        #phyp.logfile.write('/ LID: %s\n' %lid['lid'])
+        phyp.logfile.write('/ THRESHOLD: %s\n' %threshold)
         phyp.logfile.write('/ START: %s\n' %datetime.datetime.now())
         phyp.logfile.write('/////////////////////////////////////////////////////////////////////////////////////////\n')
 
-        # start sending the commands to phyp
-        print '* Sending commands'
-        
-        phyp_cmd(phyp, 'xmfr')
-        phyp_cmd(phyp, 'xmdumptrace -hub %s -ctrl -detail 2' %cfg['hubnumber'])
-        phyp_cmd(phyp, 'xmdumptrace -b %s -detail 2' %cfg['phb_hex'])
-        phyp_cmd(phyp, 'xmdumpbuserrors %s' %cfg['bus_drc'])
-        phyp_cmd(phyp, 'xmdumpp7iocregs -hub all -lem')
-        phyp_cmd(phyp, 'xmquery -q allrio -d 2')
-        phyp_cmd(phyp, 'xmquery -q allslots -d 2')
-        phyp_cmd(phyp, 'xmquery -q allslots -d 1')
-        #get_srcs()
-        
-        # INJECT
-        phyp.logfile.write('\n')
-        phyp.logfile.write('/////////////////////////////////////////////////////////////////////////////////////////\n')
-        phyp.logfile.write('/////////////////////////////////////////////////////////////////////////////////////////\n')
-        phyp_cmd(phyp,'xmwritememory %s %s' %(address, bits))
-        time.sleep(30)
-        after_inject = True
-        phyp.logfile.write('\n')
-        phyp.logfile.write('/////////////////////////////////////////////////////////////////////////////////////////\n')
-        phyp.logfile.write('/////////////////////////////////////////////////////////////////////////////////////////\n')
-        
-        #get_srcs()
-        phyp_cmd(phyp, 'xmdumptrace -hub %s -ctrl -detail 2' %cfg['hubnumber'])
-        phyp_cmd(phyp, 'xmdumptrace -b %s -detail 2' %cfg['phb_hex'])
-        phyp_cmd(phyp, 'xmdumpbuserrors %s' %cfg['bus_drc'])
-        phyp_cmd(phyp, 'xmdumpp7iocregs -hub all -lem')
-        phyp_cmd(phyp, 'xmquery -q allrio -d 2')
-        phyp_cmd(phyp, 'xmquery -q allslots -d 2')
-        phyp_cmd(phyp, 'xmquery -q allslots -d 1')
-        phyp_cmd(phyp, 'xmfr')
+        # inject. repeat as necessary if there's a threshold
+        for x in range(int(threshold)):
+            print '* Inject #%s' %(x+1)
+            phyp_cmd(phyp, cmd)
+            time.sleep(5)
+
+        print '* Collecting diagnostic data (takes a while)...'
+        aixbox.sendline('sys_capture pfd3nb17.austin -fnmcmdfile /afs/rchland.ibm.com/usr7/xman/ftc/v7r3m0/falcon/test_istreams/capture_xm_diagnostic_data_v7r3.phyp -header -logfile /afs/rchland.ibm.com/usr7/xman/ftc/v7r3m0/falcon/actual_results/%s_xm_diagnostic_data' %case_name)
+        aixbox.expect(cfg['aix_prompt'])
+
+        print '* Collecting result data (takes a while)...'
+        aixbox.sendline('sys_capture pfd3nb17.austin -fnmcmdfile /afs/rchland.ibm.com/usr7/xman/ftc/v7r3m0/falcon/test_istreams/capture_xm_switch_error_results_v7r3.phyp -header -logfile /afs/rchland.ibm.com/usr7/xman/ftc/v7r3m0/falcon/actual_results/%s_xm_switch_error_results' %case_name)
+        aixbox.expect(cfg['aix_prompt'])
+
+        print '* Collecting the error log (takes a while)...'
+        aixbox.sendline('sys_capture pfd3nb17.austin -errl -header -logfile /afs/rchland.ibm.com/usr7/xman/ftc/v7r3m0/falcon/actual_results/%s_errl' %case_name)
+        aixbox.expect(cfg['aix_prompt'])
 
         phyp.close()
 
         # see if user wants to continue
         q = raw_input('Run next case, y/n? ')
         if q == 'n': break
-        
+
+print '* Finished!'
+
+# cleanup
+aixbox.close()
 fsp.close()
